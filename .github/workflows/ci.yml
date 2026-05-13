@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]   # any branch
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Ruff lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install ruff
+        run: pip install ruff==0.6.9
+
+      - name: Run ruff
+        # --output-format=github makes errors show up as inline annotations
+        # on the PR diff, not just in the log.
+        run: ruff check . --output-format=github
+
+  test:
+    name: Pytest smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install test deps
+        # We deliberately don't pip-install requirements.txt here — most of
+        # those packages need a Jetson + CUDA wheel that doesn't exist on
+        # x86. The smoke tests only need pytest itself.
+        run: pip install pytest==8.3.3
+
+      - name: Run pytest
+        run: pytest tests/ -v
+
