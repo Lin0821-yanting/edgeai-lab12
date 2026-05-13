@@ -46,3 +46,4 @@ COPY best.pt /opt/models
 
 WORKDIR /app
 ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["python3", "inference_node.py"]
