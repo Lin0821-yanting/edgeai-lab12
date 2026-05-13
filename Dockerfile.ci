@@ -39,14 +39,10 @@ RUN ORT_VER=$(python3 -c "import onnxruntime; print(onnxruntime.__version__)") &
     echo "Wheel-Version: 1.0\nGenerator: lab10-stub\nRoot-Is-Purelib: true" > "$STUB/WHEEL" && \
     : > "$STUB/RECORD"
 
-COPY inference_node.py .
-RUN mkdir -p /opt/models
-COPY best.pt /opt/models/
+COPY inference_node.py /app/
+COPY entrypoint.sh /app/
+RUN chmod +x /app/entrypoint.sh && mkdir -p /opt/models
+COPY best.pt /opt/models
 
-RUN cd /opt/models && \
-    python3 -c "from ultralytics import YOLO; \
-        YOLO('best.pt', task='detect').export(format='engine', imgsz=320, half=True, opset=19)" && \
-    echo "✅ TRT engine compiled" && \
-    ls -lh /opt/models/
-
-CMD ["python3", "inference_node.py"]
+WORKDIR /app
+ENTRYPOINT ["/app/entrypoint.sh"]
