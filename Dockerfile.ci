@@ -1,0 +1,52 @@
+FROM dustynv/pytorch:2.7-r36.4.0
+
+LABEL maintainer="your-team"
+LABEL description="Lab10 YOLO TensorRT single-stage inference service"
+
+# ── 關鍵修正：覆蓋 dustynv 內建的私有 pip mirror ──────────────
+# dustynv 預設把 pip 指向 pypi.jetson-ai-lab.dev（私有 NVIDIA mirror）
+# 該 mirror 在外部網路不可達，必須強制改回標準 PyPI
+ENV PIP_INDEX_URL=https://pypi.org/simple/
+ENV PIP_EXTRA_INDEX_URL=
+
+# Silence Ultralytics' startup update check
+ENV YOLO_OFFLINE=1
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/lib/aarch64-linux-gnu:${LD_LIBRARY_PATH} \
+    YOLO_CONFIG_DIR=/opt/ultralytics \
+    ULTRALYTICS_AUTOINSTALL=0
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libgl1-mesa-glx \
+        libglib2.0-0 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip3 install --no-cache-dir --upgrade pip && \
+    pip3 install --no-cache-dir -r requirements.txt
+
+# Stub onnxruntime-gpu dist-info（避免 ultralytics export 時嘗試安裝 GPU 版）
+RUN ORT_VER=$(python3 -c "import onnxruntime; print(onnxruntime.__version__)") && \
+    STUB=/usr/local/lib/python3.10/dist-packages/onnxruntime_gpu-${ORT_VER}.dist-info && \
+    mkdir -p "$STUB" && \
+    printf "Metadata-Version: 2.1\nName: onnxruntime-gpu\nVersion: %s\n" "$ORT_VER" > "$STUB/METADATA" && \
+    echo "Wheel-Version: 1.0\nGenerator: lab10-stub\nRoot-Is-Purelib: true" > "$STUB/WHEEL" && \
+    : > "$STUB/RECORD"
+
+COPY inference_node.py .
+RUN mkdir -p /opt/models
+COPY best.pt /opt/models/
+
+RUN cd /opt/models && \
+    python3 -c "from ultralytics import YOLO; \
+        YOLO('best.pt', task='detect').export(format='engine', imgsz=320, half=True, opset=19)" && \
+    echo "✅ TRT engine compiled" && \
+    ls -lh /opt/models/
+
+CMD ["python3", "inference_node.py"]
